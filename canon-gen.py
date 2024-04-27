@@ -49,14 +49,18 @@ def median(lst, if_even_length_use_upper_element=False):
             return lst[(length) // 2]
 
 
-def realize_chord(chordstring, numofpitch=3, baseoctave=4, direction="ascending"):
+def realize_chord(chordstring, numofpitch=5, baseoctave=4, direction="ascending"):
     """
     given a chordstring like Am7, return a list of numofpitch pitches, starting in octave baseoctave, and ascending
     if direction == "descending", reverse the list of pitches before returning them
     """
+    print("chordstring:", chordstring)
     pitches = music21.harmony.ChordSymbol(chordstring).pitches
+    print("pitch:", pitches)
     num_iter = numofpitch // len(pitches) + 1
+    print("num_iter:", num_iter)
     octave_correction = baseoctave - pitches[0].octave
+    print("octave_correction:", octave_correction)
     result = []
     actual_pitches = 0
     for i in range(num_iter):
@@ -74,6 +78,7 @@ def realize_chord(chordstring, numofpitch=3, baseoctave=4, direction="ascending"
                     return result
         octave_correction += 1
 
+    print("result:", result)
     if direction == "ascending":
         return result
     else:
@@ -223,8 +228,9 @@ class TwoToFour(object):
             return new_stream
 
         possible_durations = [
-            [0.5, 0.25, 0.25],
-            [0.25, 0.5, 0.25]
+            [0.25, 0.25, 0.25, 0.25],
+            [0.25, 0.375, 0.125, 0.25],
+            [0.375, 0.25, 0.125, 0.25],
         ]
         chosen_dur = random.choice(possible_durations)
 
@@ -249,22 +255,157 @@ class TwoToFour(object):
         new_note3.quarterLength = chosen_dur[2] * note1.quarterLength
         new_stream.append(new_note3)
 
+        new_note4 = copy.deepcopy(note2)
+        new_note4.pitch = scale.next(note2.pitch, direction=other_direction)
+        new_note4.quarterLength = chosen_dur[3] * note1.quarterLength
+        new_stream.append(new_note4)
+
         return new_stream
 
+
+# TODO: create one to four, two to five, etc. transformations
+class OneToFour(object):
+    """
+    Transformation that expands one note into four notes.
+    * Total duration is kept.
+    * First and last notes equal the original note.
+    * Middle two notes are neighboring notes in the scale.
+    """
+
+    def __init__(self):
+        pass
+
+    def transform(self, scale, note):
+        new_note = copy.deepcopy(note)
+
+        if new_note.isRest:
+            new_stream = music21.stream.Stream()
+            new_stream.append(new_note)
+            return new_stream
+
+        possible_durations = [  # [ 1.0/3, 1.0/3, 1.0/3],
+            [0.25, 0.25, 0.25, 0.25],
+            [0.25, 0.125, 0.25, 0.375],
+            [0.25, 0.375, 0.125, 0.25],
+            [0.375, 0.25, 0.125, 0.25],
+        ]
+
+        possible_steps = [
+            "ascending",
+            "descending"
+        ]
+
+        chosen_dur = random.choice(possible_durations)
+        chosen_step = random.choice(possible_steps)
+
+        new_note.quarterLength = chosen_dur[0] * note.quarterLength
+        new_stream = music21.stream.Stream()
+
+        new_stream.append(new_note)
+
+        new_note2 = music21.note.Note()
+        next_pitch = scale.next(new_note.pitch, direction=chosen_step)
+        new_note2.pitch = next_pitch
+        new_note2.quarterLength = chosen_dur[1] * note.quarterLength
+        new_stream.append(new_note2)
+
+        new_note3 = copy.deepcopy(new_note)
+        new_note3.quarterLength = chosen_dur[2] * note.quarterLength
+        new_stream.append(new_note3)
+
+        new_note4 = copy.deepcopy(new_note)
+        new_note4.quarterLength = chosen_dur[3] * note.quarterLength
+        new_stream.append(new_note4)
+        return new_stream
+
+class TwoToFive(object):
+    """
+    Transformation that looks at two notes and interpolates three additional notes within the scale,
+    creating a sequence of five notes.
+    * Total duration doesn't change.
+    """
+
+    def __init__(self):
+        pass
+
+    def transform(self, scale, note1, note2):
+        new_note = copy.deepcopy(note1)
+
+        if note2 is None:
+            stream = music21.stream.Stream()
+            stream.insert(0, new_note)
+            return stream
+
+        if new_note.isRest:
+            new_stream = music21.stream.Stream()
+            new_stream.append(new_note)
+            return new_stream
+
+        possible_durations = [
+            [0.125, 0.125, 0.25, 0.25, 0.25],
+            [0.25, 0.25, 0.125, 0.25, 0.125],
+            [0.25, 0.25, 0.25, 0.125, 0.125],
+            [0.25, 0.25, 0.125, 0.125, 0.25],
+        ]
+        chosen_dur = random.choice(possible_durations)
+
+        possible_directions = [
+            "ascending",
+            "descending"
+        ]
+        chosen_direction = random.choice(possible_directions)
+        other_direction = list(set(possible_directions) - set([chosen_direction]))[0]
+
+        new_note.quarterLength = chosen_dur[0] * note1.quarterLength
+        new_stream = music21.stream.Stream()
+        new_stream.append(new_note)
+
+        new_note2 = copy.deepcopy(note2)
+        new_note2.pitch = scale.next(note2.pitch, direction=chosen_direction)
+        new_note2.quarterLength = chosen_dur[1] * note1.quarterLength
+        new_stream.append(new_note2)
+
+        new_note3 = copy.deepcopy(note2)
+        new_note3.pitch = scale.next(note2.pitch, direction=other_direction)
+        new_note3.quarterLength = chosen_dur[2] * note1.quarterLength
+        new_stream.append(new_note3)
+
+        new_note4 = copy.deepcopy(note2)
+        new_note4.pitch = scale.next(note2.pitch, direction=other_direction)
+        new_note4.quarterLength = chosen_dur[3] * note1.quarterLength
+        new_stream.append(new_note4)
+
+        new_note5 = copy.deepcopy(note2)
+        new_note5.pitch = scale.next(note2.pitch, direction=other_direction)
+        new_note5.quarterLength = chosen_dur[4] * note1.quarterLength
+        new_stream.append(new_note5)
+
+        return new_stream
+
+# TODO: add instruments
+# TODO: add octave jump
 
 # list of transformations that transform a single note to a series of new notes
 # identity is listed more than once to increase the chance of it getting chosen
 single_note_transformers = [Identity,
                             Identity,
-                            OneToThree
+                            Identity,
+                            OneToThree,
+                            OneToThree,
+                            OneToFour,
                             ]
 
 # list of transformations that transform a single note based on both current and next note
 # idenity is listed more than once to give it more chance of being chosen
 double_note_transformers = [Identity,
                             Identity,
+                            Identity,
+                            Identity,
+                            TwoToThree,
                             TwoToThree,
                             TwoToFour,
+                            TwoToFour,
+                            TwoToFive,
                             ]
 
 
@@ -299,7 +440,8 @@ def spiceup_streams(streams, scale, repetitions=1):
 def serialize_stream(stream, repeats=1):
     """
     function that takes a stream of parallel parts
-    and returns a stream with all parts sequenced one after the other
+    and returns a stream with all parts sequenced one after the other.
+    Basically create the delays between voices
     """
     new_stream = music21.stream.Stream()
     copies = len(stream)
@@ -308,7 +450,6 @@ def serialize_stream(stream, repeats=1):
             length = part.duration.quarterLength
             new_stream.append(copy.deepcopy(part.flat.elements))
     return new_stream, length
-
 
 def notate_voice(part, initial_rest, notesandrests):
     if initial_rest:
@@ -355,22 +496,22 @@ if __name__ == "__main__":
     ############################################################################
     # define a chord progression that serves as basis for the canon (change this!)
     path_to_musescore = ''  # change as needed; leave empty to use default settings
-    chords = "C F Am Dm G C"
+    chords = "C G Am Em F C F G"
     # scale in which to interpret these chords
     scale = music21.scale.MajorScale("C")
     # realize the chords using the given number of voices (e.g. 4)
     voices = 5
-    # realize the chords in octave 4 (e.g. 4)
+    # realize the chords in base octave 4 (e.g. 4)
     octave = 4
     # realize the chords using half notes (e.g. 1 for a whole note)
-    quarterLength = 2
+    quarterLength = 2 # 1 for 2 measures
     # number of times to spice-up the streams (e.g. 2)
     spice_depth = 1
     # how many instances of the same chords to stack (e.g. 2)
     stacking = 1
     # define extra transpositions for different voices (e.g. +12, -24, ...)
     # note that the currently implemented method only gives good results with multiples of 12
-    voice_transpositions = {VOICE1: 0, VOICE2: 0, VOICE3: -12, VOICE4: -24, VOICE5: -12}
+    voice_transpositions = {VOICE1: 0, VOICE2: 0, VOICE3: 0, VOICE4: -24, VOICE5: -12}
     ############################################################################
     #
     # END OF USER EDITABLE CODE
@@ -386,6 +527,7 @@ if __name__ == "__main__":
     splitted_chords = chords.split(" ")
     for v in range(voices):
         streams[v] = music21.stream.Stream()
+        
     # split each chord into a separate voice
     for c in splitted_chords:
         pitches = realize_chord(c, voices, octave, direction="descending")
