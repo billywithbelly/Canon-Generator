@@ -2,6 +2,7 @@ import music21
 import scamp
 import copy
 import random
+import numpy as np
 
 # define some readability constants
 SINGLE_NOTE = 0
@@ -17,6 +18,8 @@ VOICE3 = 2
 VOICE4 = 3
 VOICE5 = 4
 
+possible_directions = [ "ascending", "descending"]
+jump_intervals = [0, 0, 12, -12]
 
 def pairwise(iterable):
     """
@@ -116,25 +119,18 @@ class OneToThree(object):
 
     def transform(self, scale, note):
         new_note = copy.deepcopy(note)
-
         if new_note.isRest:
             new_stream = music21.stream.Stream()
             new_stream.append(new_note)
             return new_stream
 
-        possible_durations = [  # [ 1.0/3, 1.0/3, 1.0/3],
-            [0.5, 0.25, 0.25],
-            [0.25, 0.5, 0.25],
-            [0.25, 0.25, 0.5]
-        ]
-
-        possible_steps = [
-            "ascending",
-            "descending"
-        ]
-
-        chosen_dur = random.choice(possible_durations)
-        chosen_step = random.choice(possible_steps)
+        possible_duration = [
+            [0.5, 0.25, 0.25]
+            ]
+        
+        chosen_dur = random.choice(possible_duration)
+        random.shuffle(chosen_dur)
+        chosen_step = random.choice(possible_directions)
 
         new_note.quarterLength = chosen_dur[0] * note.quarterLength
         new_stream = music21.stream.Stream()
@@ -142,13 +138,20 @@ class OneToThree(object):
         new_stream.append(new_note)
 
         new_note2 = music21.note.Note()
+        chosen_interval = random.choice(jump_intervals)
+        interval = music21.interval.Interval(chosen_interval)
         next_pitch = scale.next(new_note.pitch, direction=chosen_step)
+        next_pitch = interval.transposePitch(next_pitch)    
+
         new_note2.pitch = next_pitch
         new_note2.quarterLength = chosen_dur[1] * note.quarterLength
         new_stream.append(new_note2)
 
         new_note3 = copy.deepcopy(new_note)
         new_note3.quarterLength = chosen_dur[2] * note.quarterLength
+        chosen_interval = random.choice(jump_intervals)
+        interval = music21.interval.Interval(chosen_interval)
+        new_note3 = interval.transposeNote(new_note3)
         new_stream.append(new_note3)
         return new_stream
 
@@ -182,35 +185,31 @@ class TwoToThree(object):
         pitches = scale.getPitches(new_note.pitch, note2.pitch)
         rounding_strategy = random.choice([ODD_UPPER, ODD_LOWER])
 
-        possible_durations = [  # [ 1.0/3, 2.0/3],
-            # [ 2.0/3, 1.0/3],
+        possible_durations = [
             [0.5, 0.5],
             [0.75, 0.25],
-            # [ 0.25, 0.75  ]
         ]
 
         chosen_dur = random.choice(possible_durations)
+        random.shuffle(chosen_dur)
 
         new_note.quarterLength = chosen_dur[0] * note1.quarterLength
         new_stream = music21.stream.Stream()
-        new_stream.append(new_note)
+        chosen_interval = random.choice(jump_intervals)
+        interval = music21.interval.Interval(chosen_interval)
+        new_stream.append(interval.transposeNote(new_note))
 
         new_note2 = copy.deepcopy(new_note)
         new_note2.pitch = median(pitches, rounding_strategy)
         new_note2.quarterLength = chosen_dur[1] * note1.quarterLength
-        new_stream.append(new_note2)
+        chosen_interval = random.choice(jump_intervals)
+        interval = music21.interval.Interval(chosen_interval)
+        new_stream.append(interval.transposeNote(new_note2))
 
         return new_stream
 
 
 class TwoToFour(object):
-    """
-    transformation that looks at next note,
-    creates notes oscillates a single scale degree
-    above and below the next note, and uses those
-    notes in the current beat (kind of cambiata?)
-    """
-
     def __init__(self):
         pass
 
@@ -228,42 +227,38 @@ class TwoToFour(object):
             return new_stream
 
         possible_durations = [
-            [0.25, 0.25, 0.25, 0.25],
-            [0.25, 0.375, 0.125, 0.25],
-            [0.375, 0.25, 0.125, 0.25],
+            [0.25, 0.25, 0.5],
+            [0.25, 0.375, 0.375],
         ]
         chosen_dur = random.choice(possible_durations)
+        random.shuffle(chosen_dur)
 
-        possible_directions = [
-            "ascending",
-            "descending"
-        ]
         chosen_direction = random.choice(possible_directions)
         other_direction = list(set(possible_directions) - set([chosen_direction]))[0]
 
         new_note.quarterLength = chosen_dur[0] * note1.quarterLength
         new_stream = music21.stream.Stream()
-        new_stream.append(new_note)
+        chosen_interval = random.choice(jump_intervals)
+        interval = music21.interval.Interval(chosen_interval)
+        new_stream.append(interval.transposeNote(new_note))
 
         new_note2 = copy.deepcopy(note2)
         new_note2.pitch = scale.next(note2.pitch, direction=chosen_direction)
         new_note2.quarterLength = chosen_dur[1] * note1.quarterLength
-        new_stream.append(new_note2)
+        chosen_interval = random.choice(jump_intervals)
+        interval = music21.interval.Interval(chosen_interval)
+        new_stream.append(interval.transposeNote(new_note2))
 
         new_note3 = copy.deepcopy(note2)
         new_note3.pitch = scale.next(note2.pitch, direction=other_direction)
         new_note3.quarterLength = chosen_dur[2] * note1.quarterLength
-        new_stream.append(new_note3)
-
-        new_note4 = copy.deepcopy(note2)
-        new_note4.pitch = scale.next(note2.pitch, direction=other_direction)
-        new_note4.quarterLength = chosen_dur[3] * note1.quarterLength
-        new_stream.append(new_note4)
+        chosen_interval = random.choice(jump_intervals)
+        interval = music21.interval.Interval(chosen_interval)
+        new_stream.append(interval.transposeNote(new_note3))
 
         return new_stream
 
 
-# TODO: create one to four, two to five, etc. transformations
 class OneToFour(object):
     """
     Transformation that expands one note into four notes.
@@ -283,20 +278,13 @@ class OneToFour(object):
             new_stream.append(new_note)
             return new_stream
 
-        possible_durations = [  # [ 1.0/3, 1.0/3, 1.0/3],
+        possible_durations = [
             [0.25, 0.25, 0.25, 0.25],
             [0.25, 0.125, 0.25, 0.375],
-            [0.25, 0.375, 0.125, 0.25],
-            [0.375, 0.25, 0.125, 0.25],
-        ]
-
-        possible_steps = [
-            "ascending",
-            "descending"
         ]
 
         chosen_dur = random.choice(possible_durations)
-        chosen_step = random.choice(possible_steps)
+        chosen_step = random.choice(possible_directions)
 
         new_note.quarterLength = chosen_dur[0] * note.quarterLength
         new_stream = music21.stream.Stream()
@@ -307,83 +295,25 @@ class OneToFour(object):
         next_pitch = scale.next(new_note.pitch, direction=chosen_step)
         new_note2.pitch = next_pitch
         new_note2.quarterLength = chosen_dur[1] * note.quarterLength
-        new_stream.append(new_note2)
+        chosen_interval = random.choice(jump_intervals)
+        interval = music21.interval.Interval(chosen_interval)
+        new_stream.append(interval.transposeNote(new_note2))
 
         new_note3 = copy.deepcopy(new_note)
         new_note3.quarterLength = chosen_dur[2] * note.quarterLength
-        new_stream.append(new_note3)
+        chosen_interval = random.choice(jump_intervals)
+        interval = music21.interval.Interval(chosen_interval)
+        new_stream.append(interval.transposeNote(new_note3))
 
         new_note4 = copy.deepcopy(new_note)
         new_note4.quarterLength = chosen_dur[3] * note.quarterLength
-        new_stream.append(new_note4)
-        return new_stream
-
-class TwoToFive(object):
-    """
-    Transformation that looks at two notes and interpolates three additional notes within the scale,
-    creating a sequence of five notes.
-    * Total duration doesn't change.
-    """
-
-    def __init__(self):
-        pass
-
-    def transform(self, scale, note1, note2):
-        new_note = copy.deepcopy(note1)
-
-        if note2 is None:
-            stream = music21.stream.Stream()
-            stream.insert(0, new_note)
-            return stream
-
-        if new_note.isRest:
-            new_stream = music21.stream.Stream()
-            new_stream.append(new_note)
-            return new_stream
-
-        possible_durations = [
-            [0.125, 0.125, 0.25, 0.25, 0.25],
-            [0.25, 0.25, 0.125, 0.25, 0.125],
-            [0.25, 0.25, 0.25, 0.125, 0.125],
-            [0.25, 0.25, 0.125, 0.125, 0.25],
-        ]
-        chosen_dur = random.choice(possible_durations)
-
-        possible_directions = [
-            "ascending",
-            "descending"
-        ]
-        chosen_direction = random.choice(possible_directions)
-        other_direction = list(set(possible_directions) - set([chosen_direction]))[0]
-
-        new_note.quarterLength = chosen_dur[0] * note1.quarterLength
-        new_stream = music21.stream.Stream()
-        new_stream.append(new_note)
-
-        new_note2 = copy.deepcopy(note2)
-        new_note2.pitch = scale.next(note2.pitch, direction=chosen_direction)
-        new_note2.quarterLength = chosen_dur[1] * note1.quarterLength
-        new_stream.append(new_note2)
-
-        new_note3 = copy.deepcopy(note2)
-        new_note3.pitch = scale.next(note2.pitch, direction=other_direction)
-        new_note3.quarterLength = chosen_dur[2] * note1.quarterLength
-        new_stream.append(new_note3)
-
-        new_note4 = copy.deepcopy(note2)
-        new_note4.pitch = scale.next(note2.pitch, direction=other_direction)
-        new_note4.quarterLength = chosen_dur[3] * note1.quarterLength
-        new_stream.append(new_note4)
-
-        new_note5 = copy.deepcopy(note2)
-        new_note5.pitch = scale.next(note2.pitch, direction=other_direction)
-        new_note5.quarterLength = chosen_dur[4] * note1.quarterLength
-        new_stream.append(new_note5)
+        chosen_interval = random.choice(jump_intervals)
+        interval = music21.interval.Interval(chosen_interval)
+        new_stream.append(interval.transposeNote(new_note4))
 
         return new_stream
 
 # TODO: add instruments
-# TODO: add octave jump
 
 # list of transformations that transform a single note to a series of new notes
 # identity is listed more than once to increase the chance of it getting chosen
@@ -405,7 +335,6 @@ double_note_transformers = [Identity,
                             TwoToThree,
                             TwoToFour,
                             TwoToFour,
-                            TwoToFive,
                             ]
 
 
@@ -530,7 +459,7 @@ if __name__ == "__main__":
         
     # split each chord into a separate voice
     for c in splitted_chords:
-        pitches = realize_chord(c, voices, octave, direction="descending")
+        pitches = realize_chord(c, voices, octave, direction=possible_directions[1])
         for v in range(voices):
             note = music21.note.Note(pitches[v])
             note.quarterLength = quarterLength
