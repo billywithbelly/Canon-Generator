@@ -13,14 +13,8 @@ methods = [SINGLE_NOTE, DOUBLE_NOTE]
 ODD_UPPER = True
 ODD_LOWER = False
 
-VOICE1 = 0
-VOICE2 = 1
-VOICE3 = 2
-VOICE4 = 3
-VOICE5 = 4
-
 possible_directions = [ Direction.ASCENDING, Direction.DESCENDING ]
-jump_intervals = [0, 0]#, 12, -12]
+jump_intervals = [0, 0]
 
 def pairwise(iterable):
     """
@@ -99,7 +93,12 @@ class Identity(object):
 
     def transform(self, scale, note, note2=None):
         new_stream = music21.stream.Stream()
-        new_stream.append(note)
+        new_note = copy.deepcopy(note)
+        # chosen_interval = random.choice(jump_intervals)
+        # interval = music21.interval.Interval(chosen_interval)
+        # next_pitch = interval.transposePitch(new_note.pitch)    
+        # new_note.pitch = next_pitch
+        new_stream.append(new_note)
         return new_stream
 
 
@@ -135,10 +134,10 @@ class OneToThree(object):
         new_stream.append(new_note)
 
         new_note2 = music21.note.Note()
-        chosen_interval = random.choice(jump_intervals)
-        interval = music21.interval.Interval(chosen_interval)
+        # chosen_interval = random.choice(jump_intervals)
+        # interval = music21.interval.Interval(chosen_interval)
         next_pitch = scale.next(new_note.pitch, direction=chosen_step)
-        next_pitch = interval.transposePitch(next_pitch)    
+        next_pitch = next_pitch
 
         new_note2.pitch = next_pitch
         new_note2.quarterLength = chosen_dur[1] * note.quarterLength
@@ -199,9 +198,10 @@ class TwoToThree(object):
         new_note2 = copy.deepcopy(new_note)
         new_note2.pitch = median(pitches, rounding_strategy)
         new_note2.quarterLength = chosen_dur[1] * note1.quarterLength
-        chosen_interval = random.choice(jump_intervals)
-        interval = music21.interval.Interval(chosen_interval)
-        new_stream.append(interval.transposeNote(new_note2))
+        # chosen_interval = random.choice(jump_intervals)
+        # interval = music21.interval.Interval(chosen_interval)
+        # new_stream.append(interval.transposeNote(new_note2))
+        new_stream.append(new_note2)
 
         return new_stream
 
@@ -351,12 +351,22 @@ def spiceup_streams(streams, scale, repetitions=1):
                 new_note = copy.deepcopy(note)
                 new_nextnote = copy.deepcopy(nextnote)
                 method = random.choice(methods)
-                if method == SINGLE_NOTE:
-                    trafo = random.choice(single_note_transformers)()
+                if (i == 0):
+                    trafo = Identity()
                     newstream.append(trafo.transform(scale, new_note).flat.elements)
-                elif method == DOUBLE_NOTE:
-                    trafo = random.choice(double_note_transformers)()
+                elif (i == 1):
+                    trafo = TwoToThree()
                     newstream.append(trafo.transform(scale, new_note, new_nextnote).flat.elements)
+                elif (i == 2):
+                    trafo = OneToThree()
+                    newstream.append(trafo.transform(scale, new_note).flat.elements)
+                else: 
+                    if method == SINGLE_NOTE:
+                        trafo = random.choice(single_note_transformers)()
+                        newstream.append(trafo.transform(scale, new_note).flat.elements)
+                    elif method == DOUBLE_NOTE:
+                        trafo = random.choice(double_note_transformers)()
+                        newstream.append(trafo.transform(scale, new_note, new_nextnote).flat.elements)
         newtotalstream.insert(0, newstream)
     return newtotalstream
 
@@ -370,7 +380,7 @@ def serialize_stream(stream, repeats=1):
     new_stream = music21.stream.Stream()
     copies = len(stream)
     for i in range(copies):
-        for part in reversed(stream):
+        for part in stream:
             length = part.duration.quarterLength
             new_stream.append(copy.deepcopy(part.flat.elements))
     return new_stream, length
@@ -387,7 +397,7 @@ def notate_voice(part, initial_rest, notesandrests):
             scamp.wait(event.quarterLength)
 
 
-def canon(serialized_stream, delay, base_ser, instruments, voices, extra_transposition_map={}, tempo=120):
+def canon(serialized_stream, delay, base_ser, instruments, voices, extra_transposition_map, tempo=120):
     """
     function that takes serialized stream and sequences it against
     itself voices times with a delay "delay"
@@ -396,7 +406,7 @@ def canon(serialized_stream, delay, base_ser, instruments, voices, extra_transpo
     s.fast_forward_in_beats(10000)
     parts = [s.new_part(instruments[i]) for i in range(len(instruments))]
     s.start_transcribing()
-    initial_rests = [i * delay for i in range(voices)]
+    initial_rests = [(i+1) * delay for i in range(voices)]
 
     for v in range(voices):
         interval = extra_transposition_map[v]
@@ -405,7 +415,7 @@ def canon(serialized_stream, delay, base_ser, instruments, voices, extra_transpo
     
     
     scamp.fork(notate_voice, args=(
-            parts[len(instruments)-1], initial_rests[0], copy.deepcopy(base_ser).transpose(interval).flat.notesAndRests))
+            parts[len(instruments)-1], 0, copy.deepcopy(base_ser).transpose(interval).flat.notesAndRests))
     s.wait_for_children_to_finish()
 
     performance = s.stop_transcribing()
@@ -432,7 +442,7 @@ if __name__ == "__main__":
     voices = len(instruments)-1 # The last instrument is the base instrument
      # define extra transpositions for different voices (e.g. +12, -24, ...)
     # note that the currently implemented method only gives good results with multiples of 12
-    voice_transpositions = {VOICE1: 0, VOICE2: 0, VOICE3: 0, VOICE4: -12, VOICE5: -12}
+    voice_transpositions = [0, 0, -12, -24, -24, -36]
 
     # realize the chords in base octave 4 (e.g. 4)
     octave = 4
@@ -455,10 +465,11 @@ if __name__ == "__main__":
     # ...
     # convert chords to notes and stuff into a stream
     streams = {}
+    base_streams = {}
     splitted_chords = chords.split(" ")
     for v in range(voices):
         streams[v] = music21.stream.Stream()
-        
+    base_streams[0] = music21.stream.Stream()
     # split each chord into a separate voice
     for c in splitted_chords:
         pitches = realize_chord(c, voices, octave, direction=possible_directions[1])
@@ -466,16 +477,22 @@ if __name__ == "__main__":
             note = music21.note.Note(pitches[v])
             note.quarterLength = quarterLength
             streams[v].append(note)
+        base_note = music21.note.Note(pitches[v])
+        base_note.quarterLength = quarterLength
+        base_streams[0].append(base_note)
+            
     # combine all voices to one big stream
     totalstream = music21.stream.Stream()
     basestream = music21.stream.Stream()
     for r in range(stacking):
         for s in streams:
             totalstream.insert(0, copy.deepcopy(streams[s]))
-            basestream.insert(0, copy.deepcopy(streams[voices-1]))
-    
+            basestream.insert(0, copy.deepcopy(base_streams[0]))
+    for s in basestream:
+        s[0].pitch = s[0].pitch.transpose(12)
     # add some spice to the boring chords. sugar and spice is always nice
     spiced_streams = [totalstream]
+    base_stream = [basestream]
     for s in range(spice_depth):
         # each iteration spices up the stream that was already spiced up in the previous iteration,
         # leading to spicier and spicier streams
@@ -488,7 +505,7 @@ if __name__ == "__main__":
     spiced_streams[-1].show("musicxml")
     
     ser, delay = serialize_stream(spiced_streams[-1])
-    base_ser, base_delay = serialize_stream(basestream)
+    base_ser, base_delay = serialize_stream(base_stream[-1])
 
     # and turn it into a canon. Add extra transpositions to some voices to create some diversity
     canonized = canon(ser, delay, base_ser, instruments, voices * stacking, voice_transpositions)
