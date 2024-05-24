@@ -3,6 +3,7 @@ import scamp
 import copy
 import random
 import numpy as np
+from music21.scale import Direction
 
 # define some readability constants
 SINGLE_NOTE = 0
@@ -18,7 +19,7 @@ VOICE3 = 2
 VOICE4 = 3
 VOICE5 = 4
 
-possible_directions = [ "ascending", "descending"]
+possible_directions = [ Direction.ASCENDING, Direction.DESCENDING ]
 jump_intervals = [0, 0, 12, -12]
 
 def pairwise(iterable):
@@ -57,13 +58,10 @@ def realize_chord(chordstring, numofpitch=5, baseoctave=4, direction="ascending"
     given a chordstring like Am7, return a list of numofpitch pitches, starting in octave baseoctave, and ascending
     if direction == "descending", reverse the list of pitches before returning them
     """
-    print("chordstring:", chordstring)
+
     pitches = music21.harmony.ChordSymbol(chordstring).pitches
-    print("pitch:", pitches)
     num_iter = numofpitch // len(pitches) + 1
-    print("num_iter:", num_iter)
     octave_correction = baseoctave - pitches[0].octave
-    print("octave_correction:", octave_correction)
     result = []
     actual_pitches = 0
     for i in range(num_iter):
@@ -81,7 +79,6 @@ def realize_chord(chordstring, numofpitch=5, baseoctave=4, direction="ascending"
                     return result
         octave_correction += 1
 
-    print("result:", result)
     if direction == "ascending":
         return result
     else:
@@ -382,27 +379,24 @@ def serialize_stream(stream, repeats=1):
 
 def notate_voice(part, initial_rest, notesandrests):
     if initial_rest:
-        #print(f"{initial_rest=}")
         scamp.wait(initial_rest)
     NOTE = type(music21.note.Note())
     REST = type(music21.note.Rest())
     for event in notesandrests:
         if type(event) == NOTE:
-            #print(f"{event=}, {event.quarterLength=}, {event.pitch.midi=}")
             part.play_note(event.pitch.midi, 0.7, event.quarterLength)
         elif type(event) == REST:
-            #print(f"{event=}")
             scamp.wait(event.quarterLength)
 
 
-def canon(serialized_stream, delay, voices, extra_transposition_map={}, tempo=120):
+def canon(serialized_stream, delay, base_ser, voices, extra_transposition_map={}, tempo=120):
     """
     function that takes serialized stream and sequences it against
     itself voices times with a delay "delay"
     """
     s = scamp.Session(tempo=tempo)
     s.fast_forward_in_beats(10000)
-    parts = [s.new_part("piano") for _ in range(voices)]
+    parts = [s.new_part("violin") for _ in range(voices + 1)]
     s.start_transcribing()
     initial_rests = [i * delay for i in range(voices)]
 
@@ -410,7 +404,10 @@ def canon(serialized_stream, delay, voices, extra_transposition_map={}, tempo=12
         interval = extra_transposition_map[v]
         scamp.fork(notate_voice, args=(
             parts[v], initial_rests[v], copy.deepcopy(serialized_stream).transpose(interval).flat.notesAndRests))
-
+    
+    
+    scamp.fork(notate_voice, args=(
+            parts[voices], initial_rests[0], copy.deepcopy(base_ser).transpose(interval).flat.notesAndRests))
     s.wait_for_children_to_finish()
 
     performance = s.stop_transcribing()
@@ -464,13 +461,14 @@ if __name__ == "__main__":
             note = music21.note.Note(pitches[v])
             note.quarterLength = quarterLength
             streams[v].append(note)
-
     # combine all voices to one big stream
     totalstream = music21.stream.Stream()
+    basestream = music21.stream.Stream()
     for r in range(stacking):
         for s in streams:
             totalstream.insert(0, copy.deepcopy(streams[s]))
-
+            basestream.insert(0, copy.deepcopy(streams[voices-1]))
+    
     # add some spice to the boring chords. sugar and spice is always nice
     spiced_streams = [totalstream]
     for s in range(spice_depth):
@@ -483,17 +481,18 @@ if __name__ == "__main__":
     if path_to_musescore:
         music21.environment.set('musicxmlPath', path_to_musescore)
     spiced_streams[-1].show("musicxml")
-    answer = None
-    while answer not in ['y', 'Y', 'n', 'N']:
-        answer = input("continue to generate canon from this spiced up chord progression? [y/n]: ")
+    
+    # answer = None
+    # while answer not in ['y', 'Y', 'n', 'N']:
+    #     answer = input("continue to generate canon from this spiced up chord progression? [y/n]: ")
 
-    if answer in ['y', 'Y']:
-        # unfold the final spiced up chord progression into a serialized stream
-        ser, delay = serialize_stream(spiced_streams[-1])
-        # ser.show('musicxml')
+    # if answer in ['y', 'Y']:
+    # unfold the final spiced up chord progression into a serialized stream
+    ser, delay = serialize_stream(spiced_streams[-1])
+    base_ser, base_delay = serialize_stream(basestream)
 
-        # and turn it into a canon. Add extra transpositions to some voices to create some diversity
-        canonized = canon(ser, delay, voices * stacking, voice_transpositions)
+    # and turn it into a canon. Add extra transpositions to some voices to create some diversity
+    canonized = canon(ser, delay, base_ser, voices * stacking, voice_transpositions)
 
-        # show the final product
-        canonized.to_score(title="Canon", composer="canon-generator.py", max_divisor=16).show_xml()
+    # show the final product
+    canonized.to_score(title="Canon", composer="canon-generator.py", max_divisor=16).show_xml()
