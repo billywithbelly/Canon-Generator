@@ -20,7 +20,7 @@ VOICE4 = 3
 VOICE5 = 4
 
 possible_directions = [ Direction.ASCENDING, Direction.DESCENDING ]
-jump_intervals = [0, 0, 12, -12]
+jump_intervals = [0, 0]#, 12, -12]
 
 def pairwise(iterable):
     """
@@ -310,8 +310,6 @@ class OneToFour(object):
 
         return new_stream
 
-# TODO: add instruments
-
 # list of transformations that transform a single note to a series of new notes
 # identity is listed more than once to increase the chance of it getting chosen
 single_note_transformers = [Identity,
@@ -389,14 +387,14 @@ def notate_voice(part, initial_rest, notesandrests):
             scamp.wait(event.quarterLength)
 
 
-def canon(serialized_stream, delay, base_ser, voices, extra_transposition_map={}, tempo=120):
+def canon(serialized_stream, delay, base_ser, instruments, voices, extra_transposition_map={}, tempo=120):
     """
     function that takes serialized stream and sequences it against
     itself voices times with a delay "delay"
     """
     s = scamp.Session(tempo=tempo)
     s.fast_forward_in_beats(10000)
-    parts = [s.new_part("violin") for _ in range(voices + 1)]
+    parts = [s.new_part(instruments[i]) for i in range(len(instruments))]
     s.start_transcribing()
     initial_rests = [i * delay for i in range(voices)]
 
@@ -407,7 +405,7 @@ def canon(serialized_stream, delay, base_ser, voices, extra_transposition_map={}
     
     
     scamp.fork(notate_voice, args=(
-            parts[voices], initial_rests[0], copy.deepcopy(base_ser).transpose(interval).flat.notesAndRests))
+            parts[len(instruments)-1], initial_rests[0], copy.deepcopy(base_ser).transpose(interval).flat.notesAndRests))
     s.wait_for_children_to_finish()
 
     performance = s.stop_transcribing()
@@ -422,11 +420,20 @@ if __name__ == "__main__":
     ############################################################################
     # define a chord progression that serves as basis for the canon (change this!)
     path_to_musescore = ''  # change as needed; leave empty to use default settings
+    
+    
     chords = "C G Am Em F C F G"
     # scale in which to interpret these chords
     scale = music21.scale.MajorScale("C")
-    # realize the chords using the given number of voices (e.g. 4)
-    voices = 5
+    
+    
+    # create list of instruments to use
+    instruments = ['violin', 'violin', 'violin', 'viola', 'viola', 'cello']
+    voices = len(instruments)-1 # The last instrument is the base instrument
+     # define extra transpositions for different voices (e.g. +12, -24, ...)
+    # note that the currently implemented method only gives good results with multiples of 12
+    voice_transpositions = {VOICE1: 0, VOICE2: 0, VOICE3: 0, VOICE4: -12, VOICE5: -12}
+
     # realize the chords in base octave 4 (e.g. 4)
     octave = 4
     # realize the chords using half notes (e.g. 1 for a whole note)
@@ -435,9 +442,7 @@ if __name__ == "__main__":
     spice_depth = 1
     # how many instances of the same chords to stack (e.g. 2)
     stacking = 1
-    # define extra transpositions for different voices (e.g. +12, -24, ...)
-    # note that the currently implemented method only gives good results with multiples of 12
-    voice_transpositions = {VOICE1: 0, VOICE2: 0, VOICE3: 0, VOICE4: -24, VOICE5: -12}
+   
     ############################################################################
     #
     # END OF USER EDITABLE CODE
@@ -482,17 +487,11 @@ if __name__ == "__main__":
         music21.environment.set('musicxmlPath', path_to_musescore)
     spiced_streams[-1].show("musicxml")
     
-    # answer = None
-    # while answer not in ['y', 'Y', 'n', 'N']:
-    #     answer = input("continue to generate canon from this spiced up chord progression? [y/n]: ")
-
-    # if answer in ['y', 'Y']:
-    # unfold the final spiced up chord progression into a serialized stream
     ser, delay = serialize_stream(spiced_streams[-1])
     base_ser, base_delay = serialize_stream(basestream)
 
     # and turn it into a canon. Add extra transpositions to some voices to create some diversity
-    canonized = canon(ser, delay, base_ser, voices * stacking, voice_transpositions)
+    canonized = canon(ser, delay, base_ser, instruments, voices * stacking, voice_transpositions)
 
     # show the final product
-    canonized.to_score(title="Canon", composer="canon-generator.py", max_divisor=16).show_xml()
+    canonized.to_score(title="Canon", composer="canon-gen.py", max_divisor=16).show_xml()
